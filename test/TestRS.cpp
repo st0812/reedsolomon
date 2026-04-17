@@ -6,7 +6,7 @@ extern "C" {
 }
 
 
-TEST_GROUP(RS)
+TEST_GROUP(RS_GF2_4)
 {
 	void setup(){
 		RS_Init(0x13,6,2);
@@ -16,7 +16,7 @@ TEST_GROUP(RS)
 	}
 };
 
-TEST(RS, Encode)
+TEST(RS_GF2_4, Encode)
 {
 	unsigned int plain[2];
 	plain[0]=GF_Pow(1);
@@ -34,7 +34,7 @@ TEST(RS, Encode)
 
 };
 
-TEST(RS, Decode)
+TEST(RS_GF2_4, Decode)
 {
 	unsigned int plain[2];
 	plain[0]=GF_Pow(1);
@@ -64,6 +64,41 @@ TEST(RS, Decode)
 	LONGS_EQUAL(GF_Pow(5),decoded[5]);
 
 
+
+};
+
+
+TEST_GROUP(RS_GF2_8)
+{
+	void setup(){
+		RS_Init(0x11D,9,5);
+	}
+	void teardown(){
+
+	}
+};
+
+TEST(RS_GF2_8, Decode)
+{
+	unsigned int plain[10];
+	plain[0]=GF_Pow('H');
+	plain[1]=GF_Pow('e');
+	plain[2]=GF_Pow('l');
+	plain[3]=GF_Pow('l');
+	plain[4]=GF_Pow('o');
+	unsigned int encoded[9];
+	RS_Encode(plain,5,encoded);
+	encoded[0]=1;
+	encoded[2]=2;
+	unsigned int decoded[9];
+	RS_Decode(encoded,9,decoded);
+	
+
+	LONGS_EQUAL(GF_Pow('H'),decoded[0]);
+	LONGS_EQUAL(GF_Pow('e'),decoded[1]);
+	LONGS_EQUAL(GF_Pow('l'),decoded[2]);
+	LONGS_EQUAL(GF_Pow('l'),decoded[3]);
+	LONGS_EQUAL(GF_Pow('o'),decoded[4]);
 
 };
 
