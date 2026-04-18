@@ -23,7 +23,7 @@ static unsigned int* computeErrorValues(const unsigned int * syndrome, const uns
 static Matrix buildSyndromeMatrix(const unsigned int* syndrome, int len);
 static Poly buildErrorPolynomial(const unsigned int * positions, const unsigned int * values, unsigned int number_of_errors);
 static Matrix buildErrorEquationsMatrix(const unsigned int * syndrome, const unsigned int * positions, int number_of_errors);
-static Poly createMonomial(unsigned int coef, unsigned int degree);
+static Poly buildMonomial(unsigned int coef, unsigned int degree);
 static void writeMessage(RS_Context ctx, Poly p, RS_Message* out);
 
 RS_Context RS_Init(unsigned int g, unsigned int N, unsigned int K){
@@ -44,7 +44,7 @@ int RS_Encode(RS_Context ctx, const RS_Message* message, RS_Message* encoded_mes
 	G = buildGeneratorPolynomial(ctx);
 	if(!G)goto cleanup;
 
-	x_N_K = createMonomial(1,ctx->N-ctx->K);
+	x_N_K = buildMonomial(1,ctx->N-ctx->K);
 	if(!x_N_K)goto cleanup;
 
 	Ix_N_K = Poly_Mul(x_N_K,I);
@@ -141,10 +141,10 @@ static void writeMessage(RS_Context ctx, Poly p, RS_Message* out){
 
 static Poly buildMessagePolynomial(const RS_Message* message){
 	Poly I=NULL, p=NULL, tmp=NULL;
-	I = createMonomial(0,0);
+	I = buildMonomial(0,0);
 	if(!I)goto cleanup;
 	for(size_t i = message->length;i-->0;){
-		p = createMonomial(message->data[i],message->length-1-i);
+		p = buildMonomial(message->data[i],message->length-1-i);
 		if(!p)goto cleanup;
 		tmp = Poly_Add(I,p);
 		Poly_Free(I);
@@ -164,7 +164,7 @@ cleanup:
 
 static Poly buildGeneratorPolynomial(RS_Context ctx){
 	Poly G=NULL, factor=NULL, tmp=NULL;
-	G = createMonomial(1,0);
+	G = buildMonomial(1,0);
 	if(!G)goto cleanup;
 	for(unsigned int i =0;i<2*ctx->t;i++){
 		factor = buildGeneratorFactor(i);
@@ -185,9 +185,9 @@ cleanup:
 
 static Poly buildGeneratorFactor(unsigned int i){
 	Poly x=NULL, c=NULL, result=NULL;
-	x = createMonomial(1,1);
+	x = buildMonomial(1,1);
 	if(!x)goto cleanup;
-	c = createMonomial(GF_Pow(i),0);
+	c = buildMonomial(GF_Pow(i),0);
 	if(!c)goto cleanup;
 	result = Poly_Sub(x,c);
 	if(!result)goto cleanup;
@@ -328,10 +328,10 @@ static Matrix buildErrorEquationsMatrix(const unsigned int * syndrome, const uns
 
 static Poly buildErrorPolynomial(const unsigned int * positions, const unsigned int * values, unsigned int number_of_errors){
 	Poly E=NULL, tmp=NULL, tmp2=NULL;
-	E  = createMonomial(0,0);
+	E  = buildMonomial(0,0);
 	if(!E)goto cleanup;
 	for(unsigned int i=0;i<number_of_errors;i++){
-		tmp  = createMonomial(values[i],positions[i]);
+		tmp  = buildMonomial(values[i],positions[i]);
 		if(!tmp)goto cleanup;
 		tmp2 = Poly_Add(E, tmp);
 		if(!tmp2)goto cleanup;
@@ -347,7 +347,7 @@ cleanup:
 	return NULL;
 }
 
-static Poly createMonomial(unsigned int coef, unsigned int degree){
+static Poly buildMonomial(unsigned int coef, unsigned int degree){
         Poly p = NULL;
         unsigned int* coefs = (unsigned int *)malloc(sizeof(unsigned int)*(degree+1));
         if(!coefs)return NULL;
