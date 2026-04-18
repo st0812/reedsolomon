@@ -6,7 +6,6 @@
 #include <assert.h>
 #include <string.h>
 
-
 struct RS_ContextStruct{
 	unsigned int N;
 	unsigned int K;
@@ -14,7 +13,7 @@ struct RS_ContextStruct{
 };
 
 static Poly correctErrors(RS_Context ctx, Poly y, const unsigned int* syndrome);
-static Poly buildMessagePolynomial(const unsigned int* data, unsigned int len);
+static Poly buildMessagePolynomial(const RS_Message* message);
 static Poly buildGeneratorPolynomial(RS_Context ctx );
 static Poly buildGeneratorFactor(unsigned int i);
 static unsigned int* computeSyndromes(RS_Context ctx, Poly Y);
@@ -25,7 +24,7 @@ static Matrix buildSyndromeMatrix(const unsigned int* syndrome, int len);
 static Poly buildErrorPolynomial(const unsigned int * positions, const unsigned int * values, unsigned int number_of_errors);
 static Matrix buildErrorEquationsMatrix(const unsigned int * syndrome, const unsigned int * positions, int number_of_errors);
 static Poly createMonomial(unsigned int coef, unsigned int degree);
-static void writeCodeword(RS_Context ctx, Poly p, unsigned int* out);
+static void writeMessage(RS_Context ctx, Poly p, RS_Message* out);
 
 RS_Context RS_Init(unsigned int g, unsigned int N, unsigned int K){
 	RS_Context ctx = (RS_Context)malloc(sizeof(struct RS_ContextStruct));
@@ -37,9 +36,9 @@ RS_Context RS_Init(unsigned int g, unsigned int N, unsigned int K){
 	return ctx;
 }
 
-int RS_Encode(RS_Context ctx, const unsigned int* plain, unsigned int len, unsigned int* encoded){
+int RS_Encode(RS_Context ctx, const RS_Message* message, RS_Message* encoded_message){
 	Poly I=NULL,G=NULL,x_N_K=NULL,Ix_N_K=NULL, P=NULL, C=NULL;
-	I = buildMessagePolynomial(plain,len);
+	I = buildMessagePolynomial(message);
 	if(!I)goto cleanup;
 
 	G = buildGeneratorPolynomial(ctx);
@@ -57,7 +56,7 @@ int RS_Encode(RS_Context ctx, const unsigned int* plain, unsigned int len, unsig
 	C = Poly_Add(Ix_N_K,P);
 	if(!C)goto cleanup;
 	
-	writeCodeword(ctx, C,encoded);
+	writeMessage(ctx, C,encoded_message);
 	return 0;
 cleanup:
 	Poly_Free(I);
@@ -69,11 +68,11 @@ cleanup:
 	return -1;
 }
 
-int RS_Decode(RS_Context ctx, const unsigned int* encoded, unsigned int len, unsigned int* plain){
+int RS_Decode(RS_Context ctx, const RS_Message* message, RS_Message* decoded_message){
 	Poly Y=NULL,  C=NULL;
 	unsigned int * syndrome=NULL;
 
-	Y=buildMessagePolynomial(encoded, len);
+	Y=buildMessagePolynomial(message);
 	if(!Y)goto cleanup;
 
 	syndrome=computeSyndromes(ctx, Y);
@@ -82,7 +81,7 @@ int RS_Decode(RS_Context ctx, const unsigned int* encoded, unsigned int len, uns
 	C = correctErrors(ctx, Y,syndrome);
 	if(!C)goto cleanup;
 
-	writeCodeword(ctx,C,plain);
+	writeMessage(ctx,C,decoded_message);
 
 	free(syndrome);
 	Poly_Free(Y);
@@ -133,19 +132,19 @@ cleanup:
 	return NULL;
 }
 
-static void writeCodeword(RS_Context ctx, Poly p, unsigned int* out){
+static void writeMessage(RS_Context ctx, Poly p, RS_Message* out){
 	for(unsigned int i=0;i<ctx->N;i++){
-		out[i]=Poly_Data(p)[ctx->N-1-i];
+		out->data[i]=Poly_Data(p)[ctx->N-1-i];
 	}
 }
 
 
-static Poly buildMessagePolynomial(const unsigned int* data, unsigned int len){
+static Poly buildMessagePolynomial(const RS_Message* message){
 	Poly I=NULL, p=NULL, tmp=NULL;
 	I = createMonomial(0,0);
 	if(!I)goto cleanup;
-	for(unsigned int i = len;i-->0;){
-		p = createMonomial(data[i],len-1-i);
+	for(size_t i = message->length;i-->0;){
+		p = createMonomial(message->data[i],message->length-1-i);
 		if(!p)goto cleanup;
 		tmp = Poly_Add(I,p);
 		Poly_Free(I);
@@ -345,6 +344,7 @@ cleanup:
 	Poly_Free(E);
 	Poly_Free(tmp);
 	Poly_Free(tmp2);
+	return NULL;
 }
 
 static Poly createMonomial(unsigned int coef, unsigned int degree){

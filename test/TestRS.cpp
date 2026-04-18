@@ -22,8 +22,10 @@ TEST(RS_GF2_4, Encode)
 	unsigned int plain[2];
 	plain[0]=GF_Pow(1);
 	plain[1]=GF_Pow(2);
+	RS_Message message = {plain,2};
 	unsigned int encoded[6];
-	RS_Encode(ctx,plain,2,encoded);
+	RS_Message encoded_message = {encoded, 6};
+	RS_Encode(ctx,&message,&encoded_message);
 	
 
 	LONGS_EQUAL(GF_Pow(1),encoded[0]);
@@ -41,8 +43,10 @@ TEST(RS_GF2_4, Decode)
 	unsigned int plain[2];
 	plain[0]=GF_Pow(1);
 	plain[1]=GF_Pow(2);
+	RS_Message message = {plain,2};
 	unsigned int encoded[6];
-	RS_Encode(ctx,plain,2,encoded);
+	RS_Message encoded_message = {encoded, 6};
+	RS_Encode(ctx,&message,&encoded_message);
 	
 
 	LONGS_EQUAL(GF_Pow(1),encoded[0]);
@@ -56,7 +60,8 @@ TEST(RS_GF2_4, Decode)
 	encoded[1]=GF_Pow(3);
 	
 	unsigned int decoded[6];
-	int result = RS_Decode(ctx, encoded, 6,decoded);
+	RS_Message decoded_message = {decoded, 6};
+	int result = RS_Decode(ctx, &encoded_message,&decoded_message);
 
 	LONGS_EQUAL(GF_Pow(1),decoded[0]);
 	LONGS_EQUAL(GF_Pow(2),decoded[1]);
@@ -83,18 +88,21 @@ TEST_GROUP(RS_GF2_8)
 TEST(RS_GF2_8, Decode)
 {
 	RS_Context ctx=RS_Init(0x11D,9,5);
-	unsigned int plain[10];
+	unsigned int plain[5];
 	plain[0]=GF_Pow('H');
 	plain[1]=GF_Pow('e');
 	plain[2]=GF_Pow('l');
 	plain[3]=GF_Pow('l');
 	plain[4]=GF_Pow('o');
 	unsigned int encoded[9];
-	RS_Encode(ctx, plain,5,encoded);
+	RS_Message message={plain, 5};
+	RS_Message encoded_message={encoded,9};
+	RS_Encode(ctx, &message,&encoded_message);
 	encoded[0]=1;
 	encoded[2]=2;
 	unsigned int decoded[9];
-	RS_Decode(ctx, encoded,9,decoded);
+	RS_Message decoded_message={decoded,9};
+	RS_Decode(ctx, &encoded_message,&decoded_message);
 	
 
 	LONGS_EQUAL(GF_Pow('H'),decoded[0]);
