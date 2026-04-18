@@ -58,6 +58,14 @@ int RS_Encode(RS_Context ctx, const RS_Message* message, RS_Message* encoded_mes
 	
 	// 多項式Cから符号語を書きだし
 	writeMessage(ctx, C,encoded_message);
+
+	Poly_Free(I);
+	Poly_Free(G);
+	Poly_Free(x_N_K);
+	Poly_Free(tmp);
+	Poly_Free(P);
+	Poly_Free(C);
+
 	return 0;
 cleanup:
 	Poly_Free(I);
