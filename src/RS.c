@@ -38,24 +38,25 @@ RS_Context RS_Init(unsigned int g, unsigned int N, unsigned int K){
 
 int RS_Encode(RS_Context ctx, const RS_Message* message, RS_Message* encoded_message){
 	Poly I=NULL,G=NULL,x_N_K=NULL, P=NULL, C=NULL, tmp=NULL;
+	//情報多項式Iの生成
 	I = buildMessagePolynomial(message);
 	if(!I)goto cleanup;
 
+	// 生成多項式Gの生成
 	G = buildGeneratorPolynomial(ctx);
 	if(!G)goto cleanup;
 
+	// 符号語に対応する多項式Cの生成
 	x_N_K = buildMonomial(1,ctx->N-ctx->K);
 	if(!x_N_K)goto cleanup;
-
 	tmp = Poly_Mul(x_N_K,I);
 	if(!tmp)goto cleanup;
-
 	P = Poly_Mod(tmp,G);
 	if(!P)goto cleanup;
-
 	C = Poly_Add(tmp,P);
 	if(!C)goto cleanup;
 	
+	// 多項式Cから符号語を書きだし
 	writeMessage(ctx, C,encoded_message);
 	return 0;
 cleanup:
@@ -72,7 +73,7 @@ int RS_Decode(RS_Context ctx, const RS_Message* message, RS_Message* decoded_mes
 	Poly Y=NULL,  C=NULL;
 	unsigned int * syndrome=NULL;
 
-	// 受信したデータから多項式を生成
+	// 受信したデータから多項式Yを生成
 	Y=buildMessagePolynomial(message);
 	if(!Y)goto cleanup;
 
@@ -80,10 +81,11 @@ int RS_Decode(RS_Context ctx, const RS_Message* message, RS_Message* decoded_mes
 	syndrome=computeSyndromes(ctx, Y);
 	if(!syndrome)goto cleanup;
 
-	// 誤りの訂正
+	// 誤り訂正を行い、復元した符号語に対応する多項式Cを生成
 	C = correctErrors(ctx, Y,syndrome);
 	if(!C)goto cleanup;
 
+	// 多項式Cから復元した符号語を書きだし
 	writeMessage(ctx,C,decoded_message);
 
 	free(syndrome);
