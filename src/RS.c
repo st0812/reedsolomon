@@ -37,7 +37,7 @@ RS_Context RS_Init(unsigned int g, unsigned int N, unsigned int K){
 }
 
 int RS_Encode(RS_Context ctx, const RS_Message* message, RS_Message* encoded_message){
-	Poly I=NULL,G=NULL,x_N_K=NULL,Ix_N_K=NULL, P=NULL, C=NULL;
+	Poly I=NULL,G=NULL,x_N_K=NULL, P=NULL, C=NULL, tmp=NULL;
 	I = buildMessagePolynomial(message);
 	if(!I)goto cleanup;
 
@@ -47,13 +47,13 @@ int RS_Encode(RS_Context ctx, const RS_Message* message, RS_Message* encoded_mes
 	x_N_K = buildMonomial(1,ctx->N-ctx->K);
 	if(!x_N_K)goto cleanup;
 
-	Ix_N_K = Poly_Mul(x_N_K,I);
-	if(!Ix_N_K)goto cleanup;
+	tmp = Poly_Mul(x_N_K,I);
+	if(!tmp)goto cleanup;
 
-	P = Poly_Mod(Ix_N_K,G);
+	P = Poly_Mod(tmp,G);
 	if(!P)goto cleanup;
 
-	C = Poly_Add(Ix_N_K,P);
+	C = Poly_Add(tmp,P);
 	if(!C)goto cleanup;
 	
 	writeMessage(ctx, C,encoded_message);
@@ -62,7 +62,7 @@ cleanup:
 	Poly_Free(I);
 	Poly_Free(G);
 	Poly_Free(x_N_K);
-	Poly_Free(Ix_N_K);
+	Poly_Free(tmp);
 	Poly_Free(P);
 	Poly_Free(C);
 	return -1;
@@ -72,12 +72,15 @@ int RS_Decode(RS_Context ctx, const RS_Message* message, RS_Message* decoded_mes
 	Poly Y=NULL,  C=NULL;
 	unsigned int * syndrome=NULL;
 
+	// 受信したデータから多項式を生成
 	Y=buildMessagePolynomial(message);
 	if(!Y)goto cleanup;
 
+	// シンドロームの算出
 	syndrome=computeSyndromes(ctx, Y);
 	if(!syndrome)goto cleanup;
 
+	// 誤りの訂正
 	C = correctErrors(ctx, Y,syndrome);
 	if(!C)goto cleanup;
 
@@ -103,20 +106,24 @@ static Poly correctErrors(RS_Context ctx, Poly y, const unsigned int* syndrome){
 	unsigned int * positions = NULL;
 	unsigned int * values=NULL;
 
+	// 誤りを含むシンボルの数を検出
 	int k = estimateErrorCount(ctx, syndrome);
 	if(k<0)goto cleanup;
 	if(k==0){
 		return Poly_Copy(y);
 	}
+	
+	// 誤りを含むシンボルの位置を検出
 	positions=findErrorLocations(syndrome,k);
 	if(!positions)goto cleanup;
 
+	// 誤りの値を検出
 	values=computeErrorValues(syndrome, positions, k);
 	if(!values)goto cleanup;
 
+	// 誤りの訂正
 	E = buildErrorPolynomial(positions, values, k);
 	if(!E)goto cleanup;
-
 	C = Poly_Add(y,E);
 	if(!C)goto cleanup;
 
@@ -158,9 +165,6 @@ cleanup:
 	Poly_Free(tmp);
 	return NULL;
 }
-
-
-
 
 static Poly buildGeneratorPolynomial(RS_Context ctx){
 	Poly G=NULL, factor=NULL, tmp=NULL;

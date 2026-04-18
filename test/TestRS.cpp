@@ -88,23 +88,30 @@ TEST_GROUP(RS_GF2_8)
 TEST(RS_GF2_8, Decode)
 {
 	RS_Context ctx=RS_Init(0x11D,9,5);
+	// Helloのメッセージを作成
 	unsigned int plain[5];
 	plain[0]=GF_Pow('H');
 	plain[1]=GF_Pow('e');
 	plain[2]=GF_Pow('l');
 	plain[3]=GF_Pow('l');
 	plain[4]=GF_Pow('o');
-	unsigned int encoded[9];
 	RS_Message message={plain, 5};
+
+	//RS符号化メッセージを作成
+	unsigned int encoded[9];
 	RS_Message encoded_message={encoded,9};
 	RS_Encode(ctx, &message,&encoded_message);
-	encoded[0]=1;
-	encoded[2]=2;
+
+	//通信路でメッセージが破損
+	encoded_message.data[0]=1;
+	encoded_message.data[2]=2;
+
+	//RS復号を実施
 	unsigned int decoded[9];
 	RS_Message decoded_message={decoded,9};
 	RS_Decode(ctx, &encoded_message,&decoded_message);
-	
 
+	// 復号されているか確認
 	LONGS_EQUAL(GF_Pow('H'),decoded[0]);
 	LONGS_EQUAL(GF_Pow('e'),decoded[1]);
 	LONGS_EQUAL(GF_Pow('l'),decoded[2]);
