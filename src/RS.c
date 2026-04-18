@@ -6,47 +6,58 @@
 #include <assert.h>
 #include <string.h>
 
-static unsigned int s_N;
-static unsigned int s_K;
-static unsigned int s_t;
 
-static Poly buildMessagePolynomial(unsigned int* data, unsigned int len);
-static Poly buildGeneratorPolynomial();
+struct RS_ContextStruct{
+	unsigned int N;
+	unsigned int K;
+	unsigned int t;
+};
+
+static Poly correctErrors(RS_Context ctx, Poly y, const unsigned int* syndrome);
+static Poly buildMessagePolynomial(const unsigned int* data, unsigned int len);
+static Poly buildGeneratorPolynomial(RS_Context ctx );
 static Poly buildGeneratorFactor(unsigned int i);
-static void computeSyndromes(Poly Y, unsigned int * syndrome);
-static int estimateErrorCount(unsigned int* syndrome);
-static int findErrorLocations(unsigned int * syndrome, int number_of_errors, unsigned int* positions);
-static int computeErrorValues(unsigned int * syndrome, unsigned int * positions, int number_of_errors, unsigned int * values);
-static Matrix buildSyndromeMatrix(unsigned int* syndrome, int len);
-static Poly buildErrorPolynomial(unsigned int * positions, unsigned int * values, unsigned int number_of_errors);
-static Matrix buildErrorEquationsMatrix(unsigned int * syndrome, unsigned int * positions, int number_of_errors);
+static unsigned int* computeSyndromes(RS_Context ctx, Poly Y);
+static int estimateErrorCount(RS_Context ctx, const unsigned int* syndrome);
+static unsigned int* findErrorLocations(const unsigned int * syndrome, int number_of_errors);
+static unsigned int* computeErrorValues(const unsigned int * syndrome, const unsigned int * positions, int number_of_errors);
+static Matrix buildSyndromeMatrix(const unsigned int* syndrome, int len);
+static Poly buildErrorPolynomial(const unsigned int * positions, const unsigned int * values, unsigned int number_of_errors);
+static Matrix buildErrorEquationsMatrix(const unsigned int * syndrome, const unsigned int * positions, int number_of_errors);
 static Poly createMonomial(unsigned int coef, unsigned int degree);
+static void writeCodeword(RS_Context ctx, Poly p, unsigned int* out);
 
-void RS_Init(unsigned int g, unsigned int N, unsigned int K){
+RS_Context RS_Init(unsigned int g, unsigned int N, unsigned int K){
+	RS_Context ctx = (RS_Context)malloc(sizeof(struct RS_ContextStruct));
+	if(!ctx)return NULL;
 	GF_Init(g);
-	s_N = N;
-	s_K = K;
-	s_t = (N-K)/2;
+	ctx->N= N;
+	ctx->K = K;
+	ctx->t = (N-K)/2;
+	return ctx;
 }
 
-int RS_Encode(unsigned int* plain, unsigned int len, unsigned int* encoded){
+int RS_Encode(RS_Context ctx, const unsigned int* plain, unsigned int len, unsigned int* encoded){
 	Poly I=NULL,G=NULL,x_N_K=NULL,Ix_N_K=NULL, P=NULL, C=NULL;
 	I = buildMessagePolynomial(plain,len);
 	if(!I)goto cleanup;
-	G = buildGeneratorPolynomial();
+
+	G = buildGeneratorPolynomial(ctx);
 	if(!G)goto cleanup;
-	x_N_K = createMonomial(1,s_N-s_K);
+
+	x_N_K = createMonomial(1,ctx->N-ctx->K);
 	if(!x_N_K)goto cleanup;
+
 	Ix_N_K = Poly_Mul(x_N_K,I);
 	if(!Ix_N_K)goto cleanup;
+
 	P = Poly_Mod(Ix_N_K,G);
 	if(!P)goto cleanup;
+
 	C = Poly_Add(Ix_N_K,P);
 	if(!C)goto cleanup;
 	
-	for(unsigned int i=0;i<s_N;i++){
-		encoded[i]=Poly_Data(C)[s_N-1-i];
-	}
+	writeCodeword(ctx, C,encoded);
 	return 0;
 cleanup:
 	Poly_Free(I);
@@ -58,55 +69,78 @@ cleanup:
 	return -1;
 }
 
-int RS_Decode(unsigned int* encoded, unsigned int len, unsigned int* plain){
-	Poly Y=NULL, E=NULL, C=NULL;
+int RS_Decode(RS_Context ctx, const unsigned int* encoded, unsigned int len, unsigned int* plain){
+	Poly Y=NULL,  C=NULL;
 	unsigned int * syndrome=NULL;
-	unsigned int * positions = NULL;
-	unsigned int * values=NULL;
 
 	Y=buildMessagePolynomial(encoded, len);
 	if(!Y)goto cleanup;
-	syndrome = (unsigned int *) malloc(sizeof(unsigned int )*2*s_t);
-	if(!syndrome)goto cleanup;
-	computeSyndromes(Y,syndrome);
-	int k = estimateErrorCount(syndrome);
-	if(k<0)goto cleanup;
-	if(k==0){
-		memcpy(plain, encoded, sizeof(unsigned int)*len);
-		return 0;
-	}
-	positions = (unsigned int *) malloc(sizeof(unsigned int )*k);
-	if(!positions)goto cleanup;
-	if(findErrorLocations(syndrome,k,positions))goto cleanup;
-	values = (unsigned int *) malloc(sizeof(unsigned int )*k);
-	if(!values)goto cleanup;
-	if(computeErrorValues(syndrome, positions, k, values))goto cleanup;
-	E = buildErrorPolynomial(positions, values, k);
-	if(!E)goto cleanup;
-	C = Poly_Add(Y,E);
-	if(!C)goto cleanup;
-	for(unsigned int i=0;i<s_N;i++){
-		plain[i]=Poly_Data(C)[s_N-i-1];
-	}
 
-	free(positions);
+	syndrome=computeSyndromes(ctx, Y);
+	if(!syndrome)goto cleanup;
+
+	C = correctErrors(ctx, Y,syndrome);
+	if(!C)goto cleanup;
+
+	writeCodeword(ctx,C,plain);
+
 	free(syndrome);
-	free(values);
 	Poly_Free(Y);
-	Poly_Free(E);
 	Poly_Free(C);
 	return 0 ;
 cleanup:
 	Poly_Free(C);
-	Poly_Free(E);
 	Poly_Free(Y);
-	free(values);
-	free(positions);
 	free(syndrome);
 	return -1;
 }
 
-Poly buildMessagePolynomial(unsigned int* data, unsigned int len){
+void RS_Free(RS_Context ctx){
+		free(ctx);
+} 
+
+static Poly correctErrors(RS_Context ctx, Poly y, const unsigned int* syndrome){
+	Poly E=NULL, C=NULL;
+	unsigned int * positions = NULL;
+	unsigned int * values=NULL;
+
+	int k = estimateErrorCount(ctx, syndrome);
+	if(k<0)goto cleanup;
+	if(k==0){
+		return Poly_Copy(y);
+	}
+	positions=findErrorLocations(syndrome,k);
+	if(!positions)goto cleanup;
+
+	values=computeErrorValues(syndrome, positions, k);
+	if(!values)goto cleanup;
+
+	E = buildErrorPolynomial(positions, values, k);
+	if(!E)goto cleanup;
+
+	C = Poly_Add(y,E);
+	if(!C)goto cleanup;
+
+	Poly_Free(E);
+	free(positions);
+	free(values);
+	return C;
+
+cleanup:
+	Poly_Free(E);
+	free(positions);
+	free(values);
+	return NULL;
+}
+
+static void writeCodeword(RS_Context ctx, Poly p, unsigned int* out){
+	for(unsigned int i=0;i<ctx->N;i++){
+		out[i]=Poly_Data(p)[ctx->N-1-i];
+	}
+}
+
+
+static Poly buildMessagePolynomial(const unsigned int* data, unsigned int len){
 	Poly I=NULL, p=NULL, tmp=NULL;
 	I = createMonomial(0,0);
 	if(!I)goto cleanup;
@@ -126,11 +160,14 @@ cleanup:
 	return NULL;
 }
 
-Poly buildGeneratorPolynomial(){
+
+
+
+static Poly buildGeneratorPolynomial(RS_Context ctx){
 	Poly G=NULL, factor=NULL, tmp=NULL;
 	G = createMonomial(1,0);
 	if(!G)goto cleanup;
-	for(unsigned int i =0;i<2*s_t;i++){
+	for(unsigned int i =0;i<2*ctx->t;i++){
 		factor = buildGeneratorFactor(i);
 		if(!factor)goto cleanup;
 		tmp = Poly_Mul(G,factor);
@@ -147,7 +184,7 @@ cleanup:
 	return NULL;
 }
 
-Poly buildGeneratorFactor(unsigned int i){
+static Poly buildGeneratorFactor(unsigned int i){
 	Poly x=NULL, c=NULL, result=NULL;
 	x = createMonomial(1,1);
 	if(!x)goto cleanup;
@@ -163,15 +200,18 @@ cleanup:
 	return NULL;
 }
 
-void computeSyndromes(Poly Y, unsigned int * syndrome){
-	for(unsigned int i=0;i<2*s_t;i++){
+static unsigned int * computeSyndromes(RS_Context ctx, Poly Y){
+	unsigned int * syndrome = (unsigned int *) malloc(sizeof(unsigned int )*2*ctx->t);
+	if(!syndrome)return NULL;
+	for(unsigned int i=0;i<2*ctx->t;i++){
 		syndrome[i] = Poly_Eval(Y,GF_Pow(i));
 	}
+	return syndrome;
 }
 
-static int estimateErrorCount(unsigned int* syndrome){
+static int estimateErrorCount(RS_Context ctx, const unsigned int* syndrome){
 	Matrix m=NULL, tmp=NULL;
-	for(unsigned int k=s_t;k>0;k--){
+	for(unsigned int k=ctx->t;k>0;k--){
 		tmp=buildSyndromeMatrix(syndrome,k);
 		if(!tmp)return -1;
 		m= Matrix_Inv(tmp);
@@ -184,7 +224,7 @@ static int estimateErrorCount(unsigned int* syndrome){
 	return 0;
 }
 
-static Matrix buildSyndromeMatrix(unsigned int* syndrome, int k){
+static Matrix buildSyndromeMatrix(const unsigned int* syndrome, int k){
 	unsigned int ** elems =NULL;
 	Matrix result = NULL;
 	elems = (unsigned int **)malloc(sizeof(unsigned int *)*k);
@@ -210,10 +250,12 @@ static Matrix buildSyndromeMatrix(unsigned int* syndrome, int k){
 	return result;
 }
 
-static int findErrorLocations(unsigned int * syndrome, int number_of_errors, unsigned int* positions){
+static unsigned int* findErrorLocations(const unsigned int * syndrome, int number_of_errors){
 	Matrix S = NULL, S_inv=NULL;
 	Poly p=NULL;
 	unsigned int * sigmas=NULL;
+	unsigned int * positions = (unsigned int *) malloc(sizeof(unsigned int )*number_of_errors);
+	if(!positions)return NULL;
 	S = buildSyndromeMatrix(syndrome,number_of_errors);
 	if(!S)goto cleanup;
 	S_inv = Matrix_Inv(S);
@@ -240,30 +282,28 @@ static int findErrorLocations(unsigned int * syndrome, int number_of_errors, uns
 	Poly_Free(p);
 	free(sigmas);
 
-	return 0;
+	return positions;
 cleanup:
 	Matrix_Free(S);
 	Matrix_Free(S_inv);
 	Poly_Free(p);
 	free(sigmas);
-	return -1;
+	free(positions);
+	return NULL;
 }
 
-static int computeErrorValues(unsigned int * syndrome, unsigned int * positions, int number_of_errors, unsigned int * values){
+static unsigned int* computeErrorValues(const unsigned int * syndrome, const unsigned int * positions, int number_of_errors){
 	Matrix mat =buildErrorEquationsMatrix(syndrome,positions,number_of_errors);
-	if(!mat)return -1;
+	if(!mat)return NULL;
 	Matrix imat = Matrix_Inv(mat);
 	Matrix_Free(mat);
-	if(!imat)return -1;
+	if(!imat)return NULL;
 	unsigned int * result=Matrix_Mul(imat,syndrome,number_of_errors);
-	if(!result)return -1;
-	memcpy(values,result,sizeof(unsigned int)*number_of_errors);
-	free(result);
 	Matrix_Free(imat);
-	return 0;
+	return result;
 }
 
-static Matrix buildErrorEquationsMatrix(unsigned int * syndrome, unsigned int * positions, int number_of_errors){
+static Matrix buildErrorEquationsMatrix(const unsigned int * syndrome, const unsigned int * positions, int number_of_errors){
 	unsigned int ** elems = malloc(sizeof(unsigned int *)*number_of_errors);
 	if(!elems)return NULL;
 	for (unsigned int i = 0; i< number_of_errors;i++){
@@ -287,7 +327,7 @@ static Matrix buildErrorEquationsMatrix(unsigned int * syndrome, unsigned int * 
 	return mat;
 }
 
-static Poly buildErrorPolynomial(unsigned int * positions, unsigned int * values, unsigned int number_of_errors){
+static Poly buildErrorPolynomial(const unsigned int * positions, const unsigned int * values, unsigned int number_of_errors){
 	Poly E=NULL, tmp=NULL, tmp2=NULL;
 	E  = createMonomial(0,0);
 	if(!E)goto cleanup;
@@ -307,7 +347,7 @@ cleanup:
 	Poly_Free(tmp2);
 }
 
-Poly createMonomial(unsigned int coef, unsigned int degree){
+static Poly createMonomial(unsigned int coef, unsigned int degree){
         Poly p = NULL;
         unsigned int* coefs = (unsigned int *)malloc(sizeof(unsigned int)*(degree+1));
         if(!coefs)return NULL;
